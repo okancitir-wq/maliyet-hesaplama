@@ -81,8 +81,13 @@ document.addEventListener('DOMContentLoaded', function () {
             container.appendChild(lbl);
 
             input.addEventListener('change', function () {
-    
-                window.location.search = '?liste=' + this.value;
+                selectedList = this.value;
+                history.replaceState(null, '', '?liste=' + selectedList);
+                loadProducts(selectedList).then(function () {
+                    populateDropdown();
+                    updatePrimVisibility();
+                    calculate();
+                });
             });
         });
     }
