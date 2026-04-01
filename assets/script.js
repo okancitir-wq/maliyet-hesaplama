@@ -5,7 +5,155 @@ document.addEventListener('DOMContentLoaded', function () {
     var resultsBody = document.getElementById('results-body');
     var searchInput = document.getElementById('product-search');
     var filterRadios = document.querySelectorAll('input[name="category"], input[name="brand"], input[name="season"], input[name="rim"]');
+    var selectedProductCode = '';
 
+    // Data loaded via fetch
+    var products = [];
+    var prevPriceMap = null;
+    var prevListLabel = null;
+    var priceLists = [];
+    var selectedList = '';
+
+    // Shortcuts to config
+    var kdvRate = CONFIG.kdvRate;
+    var toplamEkBedel = CONFIG.toplamEkBedel;
+    var faturaAltiIskontolar = CONFIG.faturaAltiIskontolar;
+    var primler = CONFIG.primler;
+    var hrdPrimi = CONFIG.hrdPrimi;
+    var months = CONFIG.months;
+
+    // --- Initialization ---
+    function init() {
+        fetch('data/manifest.json')
+            .then(function (r) { return r.json(); })
+            .then(function (lists) {
+                priceLists = lists;
+                // Determine selected list from URL or default to newest
+                var params = new URLSearchParams(window.location.search);
+                var listParam = params.get('liste');
+                selectedList = (listParam && priceLists.indexOf(listParam) !== -1) ? listParam : priceLists[0];
+                renderPriceListButtons();
+                return loadProducts(selectedList);
+            })
+            .then(function () {
+                restoreState();
+                populateDropdown();
+                updatePrimVisibility();
+                calculate();
+            });
+    }
+
+    function renderPriceListButtons() {
+        var container = document.getElementById('price-list-container');
+        container.innerHTML = '';
+        priceLists.forEach(function (list) {
+            var parts = list.split('-');
+            var label = months[parts[1]] + ' ' + parts[0];
+            var input = document.createElement('input');
+            input.type = 'radio';
+            input.className = 'btn-check';
+            input.name = 'price-list';
+            input.id = 'list-' + list;
+            input.value = list;
+            if (list === selectedList) input.checked = true;
+
+            var lbl = document.createElement('label');
+            lbl.className = 'btn btn-outline-secondary btn-sm';
+            lbl.setAttribute('for', 'list-' + list);
+            lbl.textContent = label;
+
+            container.appendChild(input);
+            container.appendChild(lbl);
+
+            input.addEventListener('change', function () {
+                saveState();
+                window.location.search = '?liste=' + this.value;
+            });
+        });
+    }
+
+    function loadProducts(listFolder) {
+        var fetchCurrent = fetch('data/' + listFolder + '/products.json')
+            .then(function (r) { return r.json(); })
+            .then(function (data) { products = data; });
+
+        // Find previous list for comparison
+        var prevLists = priceLists.filter(function (l) { return l < listFolder; });
+        var fetchPrev;
+        if (prevLists.length > 0) {
+            var prevFolder = prevLists[0];
+            fetchPrev = fetch('data/' + prevFolder + '/products.json')
+                .then(function (r) { return r.json(); })
+                .then(function (prevProducts) {
+                    prevPriceMap = {};
+                    prevProducts.forEach(function (p) {
+                        prevPriceMap[p.code] = p.list_price_kdv_dahil;
+                    });
+                    var prevParts = prevFolder.split('-');
+                    prevListLabel = months[prevParts[1]] + ' ' + prevParts[0];
+                });
+        } else {
+            prevPriceMap = null;
+            prevListLabel = null;
+            fetchPrev = Promise.resolve();
+        }
+
+        return Promise.all([fetchCurrent, fetchPrev]);
+    }
+
+    // --- State persistence ---
+    function saveState() {
+        var state = {
+            productCode: selectedProductCode,
+            filters: {
+                brand: (document.querySelector('input[name="brand"]:checked') || {}).value || '',
+                season: (document.querySelector('input[name="season"]:checked') || {}).value || '',
+                category: (document.querySelector('input[name="category"]:checked') || {}).value || '',
+                rim: (document.querySelector('input[name="rim"]:checked') || {}).value || ''
+            },
+            search: searchInput.value,
+            discounts: {},
+            hrd: ''
+        };
+        document.querySelectorAll('.discount-toggle').forEach(function (el) {
+            if (!el.disabled || !el.checked) {
+                state.discounts[el.id] = el.checked;
+            }
+        });
+        var checkedHrd = document.querySelector('.hrd-toggle:checked');
+        if (checkedHrd) state.hrd = checkedHrd.value;
+        localStorage.setItem('maliyetState', JSON.stringify(state));
+    }
+
+    function restoreState() {
+        var raw = localStorage.getItem('maliyetState');
+        if (!raw) return;
+        try { var state = JSON.parse(raw); } catch (e) { return; }
+
+        if (state.filters) {
+            ['brand', 'season', 'category', 'rim'].forEach(function (name) {
+                if (state.filters[name]) {
+                    var radio = document.querySelector('input[name="' + name + '"][value="' + state.filters[name] + '"]');
+                    if (radio) radio.checked = true;
+                }
+            });
+        }
+        if (state.search) searchInput.value = state.search;
+        if (state.productCode) selectedProductCode = state.productCode;
+        if (state.discounts) {
+            for (var id in state.discounts) {
+                var cb = document.getElementById(id);
+                if (cb && !cb.disabled) cb.checked = state.discounts[id];
+            }
+        }
+        if (state.hrd) {
+            document.querySelectorAll('.hrd-toggle').forEach(function (cb) {
+                if (cb.value === state.hrd) cb.checked = true;
+            });
+        }
+    }
+
+    // --- Filtering & Dropdown ---
     function getFilters() {
         var brand = (document.querySelector('input[name="brand"]:checked') || {}).value || '';
         var season = (document.querySelector('input[name="season"]:checked') || {}).value || '';
@@ -16,7 +164,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function populateDropdown() {
         var filters = getFilters();
-        var selected = productSelect.value;
         var filtered = getFilteredProducts(filters);
         productSelect.innerHTML = '<option value="">-- Ürün seçin (' + filtered.length + ' ürün) --</option>';
         filtered.forEach(function (p) {
@@ -26,7 +173,7 @@ document.addEventListener('DOMContentLoaded', function () {
             option.dataset.size = p.size;
             option.dataset.category = p.category;
             option.textContent = p.brand + ' | ' + p.code + ' | ' + p.size + ' | ' + p.pattern + ' ' + p.speed_load + ' | ' + formatCurrency(p.list_price_kdv_dahil) + ' TL';
-            if (String(p.list_price_kdv_dahil) === selected) {
+            if (p.code === selectedProductCode) {
                 option.selected = true;
             }
             productSelect.appendChild(option);
@@ -52,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var sizeDigits = p.size.replace(/[^0-9]/g, '');
             var searchStr = (p.code + ' ' + p.size + ' ' + sizeDigits + ' ' + p.pattern + ' ' + p.speed_load + ' ' + p.category + ' ' + p.brand + ' ' + p.season).toLowerCase();
             var filterDigits = filter.replace(/[^0-9]/g, '');
-            var isDigitsOnly = /^\d+$/.test(filter.replace(/\s+/g, ''));
+            var isDigitsOnly = /^\d+$/.test(filter.replace(/[\s\/\-\.]/g, ''));
             if (isDigitsOnly && filterDigits.length >= 5) {
                 return sizeDigits.indexOf(filterDigits) !== -1;
             }
@@ -63,22 +210,85 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Initial populate (re-populate when products loaded via fetch)
-    populateDropdown();
-    document.addEventListener('productsLoaded', populateDropdown);
+    // --- Event Listeners ---
+    document.getElementById('reset-btn').addEventListener('click', function () {
+        localStorage.removeItem('maliyetState');
+        selectedProductCode = '';
+        searchInput.value = '';
+        manualPriceInput.value = '';
+        document.querySelectorAll('input[name="brand"], input[name="season"], input[name="category"], input[name="rim"]').forEach(function (r) {
+            r.checked = r.value === '';
+        });
+        document.querySelectorAll('.discount-toggle').forEach(function (el) {
+            if (el.disabled && el.checked) return;
+            el.checked = false;
+        });
+        document.querySelectorAll('.hrd-toggle').forEach(function (cb) {
+            cb.checked = false;
+        });
+        populateDropdown();
+        updatePrimVisibility();
+        calculate();
+    });
 
-    // Search filter
-    searchInput.addEventListener('input', populateDropdown);
+    searchInput.addEventListener('input', function () {
+        populateDropdown();
+        saveState();
+    });
 
-    // All filter radios
     filterRadios.forEach(function (radio) {
         radio.addEventListener('change', function () {
             populateDropdown();
             updatePrimVisibility();
             calculate();
+            saveState();
         });
     });
 
+    productSelect.addEventListener('change', function () {
+        var opt = this.options[this.selectedIndex];
+        selectedProductCode = (opt && opt.dataset.code) ? opt.dataset.code : '';
+        if (this.value) {
+            manualPriceInput.value = '';
+        }
+        updatePrimVisibility();
+        calculate();
+        saveState();
+    });
+
+    manualPriceInput.addEventListener('input', function () {
+        if (this.value) {
+            productSelect.value = '';
+            selectedProductCode = '';
+        }
+        updatePrimVisibility();
+        calculate();
+        saveState();
+    });
+
+    document.querySelectorAll('.discount-toggle').forEach(function (el) {
+        el.addEventListener('change', function () {
+            if (el.id === 'discount-entegrasyon') {
+                updateDependentPrims();
+            }
+            calculate();
+            saveState();
+        });
+    });
+
+    document.querySelectorAll('.hrd-toggle').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            if (this.checked) {
+                document.querySelectorAll('.hrd-toggle').forEach(function (other) {
+                    if (other !== cb) other.checked = false;
+                });
+            }
+            calculate();
+            saveState();
+        });
+    });
+
+    // --- Prim Visibility ---
     function getSelectedProductBrand() {
         var opt = productSelect.options[productSelect.selectedIndex];
         if (!opt || !opt.value) return '';
@@ -103,10 +313,9 @@ document.addEventListener('DOMContentLoaded', function () {
         var isTarim = getActiveCategory() === 'Tarım';
         var isFirestone = activeBrand === 'Firestone';
 
-        // Tarım or Firestone: disable all discounts and prims except fixed fatura altı
         if (isTarim || isFirestone) {
             document.querySelectorAll('.discount-toggle').forEach(function (el) {
-                if (el.disabled && el.checked) return; // keep fixed fatura altı
+                if (el.disabled && el.checked) return;
                 el.checked = false;
                 el.disabled = true;
                 var parent = el.closest('.prim-toggle, div');
@@ -118,15 +327,13 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        // Re-enable non-fixed discount toggles (will be refined below)
         document.querySelectorAll('.discount-toggle').forEach(function (el) {
-            if (el.disabled && el.checked) return; // keep fixed
+            if (el.disabled && el.checked) return;
             el.disabled = false;
             var parent = el.closest('.prim-toggle, div');
             if (parent) parent.classList.remove('disabled-prim');
         });
 
-        // Brand-based prim: disable when brand doesn't match
         document.querySelectorAll('.prim-toggle[data-brands]').forEach(function (div) {
             var allowed = div.dataset.brands.split(',');
             var enabled = hasManualPrice || !activeBrand || allowed.indexOf(activeBrand) !== -1;
@@ -139,7 +346,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
 
-        // HRD rim-based: disable when rim is <= max_rim (from filter or selected product)
         var hrdContainer = document.getElementById('hrd-container');
         var maxRim = parseInt(hrdContainer.dataset.maxRim, 10);
         var rimFilter = (document.querySelector('input[name="rim"]:checked') || {}).value || '';
@@ -159,7 +365,6 @@ document.addEventListener('DOMContentLoaded', function () {
             hrdToggles.forEach(function (cb) { cb.disabled = false; });
         }
 
-        // Otopratik requires entegrasyon
         updateDependentPrims();
     }
 
@@ -180,57 +385,14 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
-    updatePrimVisibility();
 
-    // HRD toggle buttons (mutually exclusive)
-    document.querySelectorAll('.hrd-toggle').forEach(function (cb) {
-        cb.addEventListener('change', function () {
-            if (this.checked) {
-                document.querySelectorAll('.hrd-toggle').forEach(function (other) {
-                    if (other !== cb) other.checked = false;
-                });
-            }
-            calculate();
-        });
-    });
-
-    // Event listeners
-    productSelect.addEventListener('change', function () {
-        if (this.value) {
-            manualPriceInput.value = '';
-        }
-        updatePrimVisibility();
-        calculate();
-    });
-
-    manualPriceInput.addEventListener('input', function () {
-        if (this.value) {
-            productSelect.value = '';
-        }
-        updatePrimVisibility();
-        calculate();
-    });
-
-    // Discount toggles
-    document.querySelectorAll('.discount-toggle').forEach(function (el) {
-        el.addEventListener('change', function () {
-            if (el.id === 'discount-entegrasyon') {
-                updateDependentPrims();
-            }
-            calculate();
-        });
-    });
-
+    // --- Calculation ---
     function getListPrice() {
         var manual = manualPriceInput.value.replace(/\./g, '').replace(',', '.');
         var price = parseFloat(manual);
-        if (!isNaN(price) && price > 0) {
-            return price;
-        }
+        if (!isNaN(price) && price > 0) return price;
         var selected = parseFloat(productSelect.value);
-        if (!isNaN(selected) && selected > 0) {
-            return selected;
-        }
+        if (!isNaN(selected) && selected > 0) return selected;
         return 0;
     }
 
@@ -258,6 +420,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Step 1: List price
         html += resultRow('Liste Fiyatı (KDV Dahil)', formatCurrency(listPrice) + ' TL', '');
+        if (selectedProductCode) {
+            html += getPriceChangeHtml(selectedProductCode, listPrice);
+        }
 
         // Step 2: Remove GEKAP + Ek Bedel, then KDV
         html += resultRow('GEKAP + Ek Bedel', '- ' + formatCurrency(toplamEkBedel) + ' TL', 'discount');
@@ -315,17 +480,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
         resultsBody.innerHTML = html;
 
-        // Final result
         document.getElementById('final-price').textContent = formatCurrency(netMaliyet) + ' TL';
         document.getElementById('final-price-kdv').textContent = formatCurrency(netKdvDahil) + ' TL';
 
-        // Total effective discount
         var effectiveDiscount = kdvHaric > 0 ? roundTwo((1 - netMaliyet / kdvHaric) * 100) : 0;
         document.getElementById('effective-discount').textContent = '%' + formatNumber(effectiveDiscount);
 
         resultsContainer.classList.add('visible');
     }
 
+    // --- Helpers ---
     function resultRow(label, value, cssClass) {
         return '<div class="result-row ' + (cssClass || '') + '">' +
             '<span>' + label + '</span>' +
@@ -351,6 +515,22 @@ document.addEventListener('DOMContentLoaded', function () {
         }).format(n);
     }
 
-    // Initial calculation if product is pre-selected
-    calculate();
+    function getPriceChangeHtml(code, currentPrice) {
+        if (!prevPriceMap) return '';
+        var prevPrice = prevPriceMap[code];
+        if (prevPrice === undefined || prevPrice <= 0) {
+            return '<div class="price-change new-product"><i class="bi bi-plus-circle-fill"></i> Yeni ürün</div>';
+        }
+        if (prevPrice === currentPrice) {
+            return '<div class="price-change no-change"><i class="bi bi-dash-circle"></i> Fiyat değişmedi (' + prevListLabel + ')</div>';
+        }
+        var changePercent = roundTwo(((currentPrice - prevPrice) / prevPrice) * 100);
+        if (currentPrice > prevPrice) {
+            return '<div class="price-change increase"><i class="bi bi-arrow-up-circle-fill"></i> +%' + formatNumber(changePercent) + ' (' + prevListLabel + ': ' + formatCurrency(prevPrice) + ' TL)</div>';
+        }
+        return '<div class="price-change decrease"><i class="bi bi-arrow-down-circle-fill"></i> -%' + formatNumber(Math.abs(changePercent)) + ' (' + prevListLabel + ': ' + formatCurrency(prevPrice) + ' TL)</div>';
+    }
+
+    // Start
+    init();
 });

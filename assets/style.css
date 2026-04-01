@@ -100,6 +100,21 @@ body {
     margin-left: 0.3rem;
 }
 
+/* Price change indicator */
+.price-change {
+    font-size: 0.78rem;
+    padding: 0.15rem 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    border-left: 3px solid currentColor;
+    margin: 0.25rem 0;
+}
+.price-change.increase { color: #dc3545; }
+.price-change.decrease { color: #198754; }
+.price-change.new-product { color: #0d6efd; }
+.price-change.no-change { color: #6c757d; }
+
 /* Results section */
 .result-section {
     background-color: #f8f9fa;

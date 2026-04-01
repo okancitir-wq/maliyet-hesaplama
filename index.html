@@ -9,7 +9,7 @@
     <link href="assets/style.css" rel="stylesheet">
 </head>
 <body>
-    <div class="main-card card shadow-sm">
+    <div class="main-card card shadow-sm" id="main-app">
         <div class="header-bar">
             <i class="bi bi-calculator"></i> Lastik Maliyet Hesaplama
         </div>
@@ -124,9 +124,14 @@
                 <!-- Manual Price Input -->
                 <div class="mb-3">
                     <label class="section-label">Manuel Fiyat Girişi (KDV Dahil)</label>
-                    <div class="input-group manual-input-group">
-                        <input type="text" id="manual-price" class="form-control" placeholder="0,00" inputmode="decimal">
-                        <span class="input-group-text">TL</span>
+                    <div class="d-flex gap-2 align-items-start">
+                        <div class="input-group manual-input-group">
+                            <input type="text" id="manual-price" class="form-control" placeholder="0,00" inputmode="decimal">
+                            <span class="input-group-text">TL</span>
+                        </div>
+                        <button type="button" id="reset-btn" class="btn btn-danger btn-lg">
+                            <i class="bi bi-arrow-counterclockwise"></i> SIFIRLA
+                        </button>
                     </div>
                 </div>
 
@@ -135,21 +140,21 @@
             <!-- RIGHT COLUMN: Discounts & Results -->
             <div class="col-right">
 
-                <!-- Fatura Altı İskontolar -->
+                <!-- Fatura Alti Iskontolar -->
                 <div class="mb-3">
-                    <label class="section-label">Fatura Altı İskontolar</label>
+                    <label class="section-label">Fatura Alti Iskontolar</label>
                     <div class="discount-toggles d-flex flex-wrap gap-2">
                         <div class="locked-discount">
                             <input type="checkbox" class="btn-check discount-toggle" id="discount-fatura_alti" checked disabled>
                             <label class="btn btn-success btn-sm" for="discount-fatura_alti">
-                                Fatura Altı İskonto (%25)
+                                Fatura Alti Iskonto (%25)
                                 <i class="bi bi-lock-fill"></i>
                             </label>
                         </div>
                         <div>
                             <input type="checkbox" class="btn-check discount-toggle" id="discount-on_siparis" autocomplete="off">
                             <label class="btn btn-outline-primary btn-sm" for="discount-on_siparis">
-                                Ön Sipariş İskontosu (%3)
+                                Ön Siparis Iskontosu (%3)
                             </label>
                         </div>
                     </div>
@@ -204,15 +209,15 @@
                     </div>
                     <div class="final-result">
                         <div class="result-row">
-                            <span>NET BAYİ MALİYETİ (KDV Hariç)</span>
+                            <span>NET BAYi MALiYETi (KDV Haric)</span>
                             <span id="final-price">0,00 TL</span>
                         </div>
                         <div class="result-row">
-                            <span>NET BAYİ MALİYETİ (KDV, GEKAP ve Ek Bedel Dahil)</span>
+                            <span>NET BAYi MALiYETi (KDV, GEKAP ve Ek Bedel Dahil)</span>
                             <span id="final-price-kdv">0,00 TL</span>
                         </div>
                         <div class="result-row" style="font-size: 0.85rem; font-weight: 400; opacity: 0.85;">
-                            <span>Toplam Etkin İskonto</span>
+                            <span>Toplam Etkin Iskonto</span>
                             <span id="effective-discount">%0,00</span>
                         </div>
                     </div>
@@ -224,75 +229,7 @@
         </div>
     </div>
 
-    <script>
-        var kdvRate = 0.20;
-        var toplamEkBedel = 39.50;
-        var faturaAltiIskontolar = {
-            "fatura_alti": {"label": "Fatura Altı İskonto", "rate": 0.25, "fixed": true},
-            "on_siparis": {"label": "Ön Sipariş İskontosu", "rate": 0.03, "fixed": false}
-        };
-        var primler = {
-            "donem_sonu": {"label": "Dönem Sonu Primi", "rate": 0.02, "brands": ["Bridgestone", "Lassa"]},
-            "entegrasyon": {"label": "Sell-out Primi", "rate": 0.02},
-            "otopratik": {"label": "Otopratik Primi", "rate": 0.01},
-            "filo": {"label": "Filo Primi", "rate": 0.03}
-        };
-        var hrdPrimi = {"label": "HRD Primi", "rates": [0.03, 0.04], "max_rim": 16};
-        var products = [];
-
-        var months = {
-            '01': 'Ocak', '02': 'Şubat', '03': 'Mart', '04': 'Nisan',
-            '05': 'Mayıs', '06': 'Haziran', '07': 'Temmuz', '08': 'Ağustos',
-            '09': 'Eylül', '10': 'Ekim', '11': 'Kasım', '12': 'Aralık'
-        };
-
-        function loadPriceList(listId) {
-            fetch('data/' + listId + '/products.json')
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    products = data;
-                    document.dispatchEvent(new Event('productsLoaded'));
-                });
-        }
-
-        // Load manifest and build price list selector
-        fetch('data/manifest.json')
-            .then(function(r) { return r.json(); })
-            .then(function(lists) {
-                var container = document.getElementById('price-list-container');
-                var params = new URLSearchParams(window.location.search);
-                var selected = params.get('liste') || lists[0];
-
-                lists.forEach(function(list) {
-                    var parts = list.split('-');
-                    var label = months[parts[1]] + ' ' + parts[0];
-                    var input = document.createElement('input');
-                    input.type = 'radio';
-                    input.className = 'btn-check';
-                    input.name = 'price-list';
-                    input.id = 'list-' + list;
-                    input.value = list;
-                    if (list === selected) input.checked = true;
-
-                    var lbl = document.createElement('label');
-                    lbl.className = 'btn btn-outline-secondary btn-sm';
-                    lbl.setAttribute('for', 'list-' + list);
-                    lbl.textContent = label;
-
-                    container.appendChild(input);
-                    container.appendChild(lbl);
-
-                    input.addEventListener('change', function() {
-                        var url = new URL(window.location);
-                        url.searchParams.set('liste', this.value);
-                        window.history.replaceState(null, '', url);
-                        loadPriceList(this.value);
-                    });
-                });
-
-                loadPriceList(selected);
-            });
-    </script>
+    <script src="assets/config.js"></script>
     <script src="assets/script.js"></script>
 </body>
 </html>
