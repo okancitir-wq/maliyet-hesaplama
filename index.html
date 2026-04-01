@@ -140,21 +140,21 @@
             <!-- RIGHT COLUMN: Discounts & Results -->
             <div class="col-right">
 
-                <!-- Fatura Alti Iskontolar -->
+                <!-- Fatura Altı İskontolar -->
                 <div class="mb-3">
-                    <label class="section-label">Fatura Alti Iskontolar</label>
+                    <label class="section-label">Fatura Altı İskontolar</label>
                     <div class="discount-toggles d-flex flex-wrap gap-2">
                         <div class="locked-discount">
                             <input type="checkbox" class="btn-check discount-toggle" id="discount-fatura_alti" checked disabled>
                             <label class="btn btn-success btn-sm" for="discount-fatura_alti">
-                                Fatura Alti Iskonto (%25)
+                                Fatura Altı İskonto (%25)
                                 <i class="bi bi-lock-fill"></i>
                             </label>
                         </div>
                         <div>
                             <input type="checkbox" class="btn-check discount-toggle" id="discount-on_siparis" autocomplete="off">
                             <label class="btn btn-outline-primary btn-sm" for="discount-on_siparis">
-                                Ön Siparis Iskontosu (%3)
+                                Ön Sipariş İskontosu (%3)
                             </label>
                         </div>
                     </div>
@@ -209,15 +209,15 @@
                     </div>
                     <div class="final-result">
                         <div class="result-row">
-                            <span>NET BAYi MALiYETi (KDV Haric)</span>
+                            <span>NET BAYİ MALİYETİ (KDV Hariç)</span>
                             <span id="final-price">0,00 TL</span>
                         </div>
                         <div class="result-row">
-                            <span>NET BAYi MALiYETi (KDV, GEKAP ve Ek Bedel Dahil)</span>
+                            <span>NET BAYİ MALİYETİ (KDV, GEKAP ve Ek Bedel Dahil)</span>
                             <span id="final-price-kdv">0,00 TL</span>
                         </div>
                         <div class="result-row" style="font-size: 0.85rem; font-weight: 400; opacity: 0.85;">
-                            <span>Toplam Etkin Iskonto</span>
+                            <span>Toplam Etkin İskonto</span>
                             <span id="effective-discount">%0,00</span>
                         </div>
                     </div>
@@ -229,7 +229,24 @@
         </div>
     </div>
 
-    <script src="assets/config.js"></script>
-    <script src="assets/script.js"></script>
+    <!-- Warning Modal -->
+    <div class="modal fade" id="warningModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h6 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Uyarı</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="warningModalBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anladım</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/config.js?v=6"></script>
+    <script src="assets/script.js?v=6"></script>
 </body>
 </html>

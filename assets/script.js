@@ -6,6 +6,22 @@ document.addEventListener('DOMContentLoaded', function () {
     var searchInput = document.getElementById('product-search');
     var filterRadios = document.querySelectorAll('input[name="category"], input[name="brand"], input[name="season"], input[name="rim"]');
     var selectedProductCode = '';
+    var warningMessage = '<br>Bu program şu anda test aşamasındadır. Bu grubun hesaplaması henüz sisteme eklenmemiştir, ilerleyen güncellemelerde eklenecektir.<br><br>Gösterilen sonuçlar doğru olmayabilir.';
+
+    var warningModal = null;
+    function showWarning(title) {
+        var modalEl = document.getElementById('warningModal');
+        var modalBody = document.getElementById('warningModalBody');
+        if (modalEl && modalBody && typeof bootstrap !== 'undefined') {
+            if (!warningModal) {
+                warningModal = new bootstrap.Modal(modalEl);
+            }
+            modalBody.innerHTML = '<strong>' + title + '</strong>' + warningMessage;
+            warningModal.show();
+        } else {
+            alert(title + '\n\nBu program şu anda test aşamasındadır. Bu grubun hesaplaması henüz sisteme eklenmemiştir, ilerleyen güncellemelerde eklenecektir.\n\nGösterilen sonuçlar doğru olmayabilir.');
+        }
+    }
 
     // Data loaded via fetch
     var products = [];
@@ -36,7 +52,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 return loadProducts(selectedList);
             })
             .then(function () {
-                restoreState();
                 populateDropdown();
                 updatePrimVisibility();
                 calculate();
@@ -66,7 +81,7 @@ document.addEventListener('DOMContentLoaded', function () {
             container.appendChild(lbl);
 
             input.addEventListener('change', function () {
-                saveState();
+    
                 window.location.search = '?liste=' + this.value;
             });
         });
@@ -101,57 +116,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return Promise.all([fetchCurrent, fetchPrev]);
     }
 
-    // --- State persistence ---
-    function saveState() {
-        var state = {
-            productCode: selectedProductCode,
-            filters: {
-                brand: (document.querySelector('input[name="brand"]:checked') || {}).value || '',
-                season: (document.querySelector('input[name="season"]:checked') || {}).value || '',
-                category: (document.querySelector('input[name="category"]:checked') || {}).value || '',
-                rim: (document.querySelector('input[name="rim"]:checked') || {}).value || ''
-            },
-            search: searchInput.value,
-            discounts: {},
-            hrd: ''
-        };
-        document.querySelectorAll('.discount-toggle').forEach(function (el) {
-            if (!el.disabled || !el.checked) {
-                state.discounts[el.id] = el.checked;
-            }
-        });
-        var checkedHrd = document.querySelector('.hrd-toggle:checked');
-        if (checkedHrd) state.hrd = checkedHrd.value;
-        localStorage.setItem('maliyetState', JSON.stringify(state));
-    }
-
-    function restoreState() {
-        var raw = localStorage.getItem('maliyetState');
-        if (!raw) return;
-        try { var state = JSON.parse(raw); } catch (e) { return; }
-
-        if (state.filters) {
-            ['brand', 'season', 'category', 'rim'].forEach(function (name) {
-                if (state.filters[name]) {
-                    var radio = document.querySelector('input[name="' + name + '"][value="' + state.filters[name] + '"]');
-                    if (radio) radio.checked = true;
-                }
-            });
-        }
-        if (state.search) searchInput.value = state.search;
-        if (state.productCode) selectedProductCode = state.productCode;
-        if (state.discounts) {
-            for (var id in state.discounts) {
-                var cb = document.getElementById(id);
-                if (cb && !cb.disabled) cb.checked = state.discounts[id];
-            }
-        }
-        if (state.hrd) {
-            document.querySelectorAll('.hrd-toggle').forEach(function (cb) {
-                if (cb.value === state.hrd) cb.checked = true;
-            });
-        }
-    }
 
     // --- Filtering & Dropdown ---
     function getFilters() {
@@ -212,7 +176,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // --- Event Listeners ---
     document.getElementById('reset-btn').addEventListener('click', function () {
-        localStorage.removeItem('maliyetState');
         selectedProductCode = '';
         searchInput.value = '';
         manualPriceInput.value = '';
@@ -233,15 +196,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     searchInput.addEventListener('input', function () {
         populateDropdown();
-        saveState();
     });
 
     filterRadios.forEach(function (radio) {
         radio.addEventListener('change', function () {
+            if (this.id === 'cat-tarim') {
+                showWarning('Tarım grubu seçtiniz.');
+            }
+            if (this.id === 'brand-firestone') {
+                showWarning('Firestone markası seçtiniz.');
+            }
             populateDropdown();
             updatePrimVisibility();
             calculate();
-            saveState();
+
         });
     });
 
@@ -251,9 +219,16 @@ document.addEventListener('DOMContentLoaded', function () {
         if (this.value) {
             manualPriceInput.value = '';
         }
+        // Seçilen ürün tarım veya firestone ise uyar
+        if (opt && opt.dataset.category === 'Tarım') {
+            showWarning('Tarım grubu ürün seçtiniz.');
+        }
+        var productText = (opt && opt.textContent) || '';
+        if (productText.split('|')[0].trim() === 'Firestone') {
+            showWarning('Firestone ürünü seçtiniz.');
+        }
         updatePrimVisibility();
         calculate();
-        saveState();
     });
 
     manualPriceInput.addEventListener('input', function () {
@@ -263,7 +238,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         updatePrimVisibility();
         calculate();
-        saveState();
     });
 
     document.querySelectorAll('.discount-toggle').forEach(function (el) {
@@ -272,7 +246,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 updateDependentPrims();
             }
             calculate();
-            saveState();
+
         });
     });
 
@@ -284,7 +258,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             }
             calculate();
-            saveState();
+
         });
     });
 
